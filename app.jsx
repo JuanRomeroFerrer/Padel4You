@@ -156,7 +156,8 @@ function App() {
 
         const decoded = decodeJWT(data.token);
         if (decoded) {
-          const userData = { id: decoded.id, email: decoded.email, name, phone, ...data.user };
+          const today = new Date().toISOString().slice(0, 10);
+          const userData = { id: decoded.id, email: decoded.email, name, phone, joinDate: today, ...data.user };
           setUserRaw(userData);
           localStorage.setItem('p4y_user', JSON.stringify(userData));
         }
