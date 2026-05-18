@@ -1,4 +1,4 @@
-const { useState } = React;
+const { useState, useMemo } = React;
 const { Icon, Btn, InputField, Badge, Breadcrumbs } = window;
 
 const MONTHS_ES_SHORT = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -152,6 +152,10 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
     );
   }
 
+  // Memoize form components to prevent re-mounting on parent re-renders
+  const loginFormEl = useMemo(() => <LoginForm />, []);
+  const registerFormEl = useMemo(() => <RegisterForm />, []);
+
   // ── Auth page ──
   function AuthSection() {
     return (
@@ -175,7 +179,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
               ))}
             </div>
             <div style={{ padding: '32px 36px' }}>
-              {authTab === 'login' ? <LoginForm /> : <RegisterForm />}
+              {authTab === 'login' ? loginFormEl : registerFormEl}
             </div>
           </div>
         </div>
