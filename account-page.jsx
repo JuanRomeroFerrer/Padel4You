@@ -8,6 +8,16 @@ function fmtDateShort(dateStr) {
   return `${d} ${MONTHS_ES_SHORT[parseInt(m,10)-1]} ${y}`;
 }
 
+function fmtTime(timeStr) {
+  if (!timeStr) return '—';
+  // Handle formats like "18:00:00" or "18:00"
+  if (typeof timeStr === 'string') {
+    const parts = timeStr.split(':');
+    return `${parts[0]}:${parts[1]}`;
+  }
+  return timeStr;
+}
+
 function AccountPage({ user, setUser, reservations, cancelReservation, setPage, showNotification, apiLogin, apiLogout, apiRegister, loading, setLoading, apiError, setApiError }) {
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [profileTab, setProfileTab] = useState('reservas'); // 'reservas' | 'suscripcion' | 'perfil'
@@ -263,7 +273,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
                 </div>
                 <div style={{ flex: 1, minWidth: '160px' }}>
                   <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '15px', color: 'var(--navy)' }}>{r.court}</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtDateShort(r.date)} · {r.time} h</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtDateShort(r.date)} · {fmtTime(r.startTime)} h</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <Badge variant={sv}>{sl}</Badge>
