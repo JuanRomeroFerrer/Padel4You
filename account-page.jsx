@@ -198,7 +198,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
     return (
       <div style={{ background: 'white', borderRadius: 'var(--radius-lg)', border: '1.5px solid var(--gray-light)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
         <div style={{ background: 'var(--navy)', padding: '28px 28px 48px', position: 'relative' }}>
-          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(oklch(100% 0 0) 1px, transparent 1px)', backgroundSize: '48px 48px', opacity: 0.04 }} />
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'linear-gradient(oklch(100% 0 0) 1px, transparent 1px)', backgroundSize: '48px 48px', opacity: 0.04, zIndex: -1 }} />
         </div>
         <div style={{ padding: '0 28px 28px' }}>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '16px', marginTop: '-36px', marginBottom: '20px' }}>
