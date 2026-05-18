@@ -374,7 +374,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
     function renderSlot(h) {
       const startTimeStr = fmtSlot(h);
-      const isAvailable = availableSlots.some(slot => slot.startTime === startTimeStr);
+      const isAvailable = availableSlots.some(slot => slot === startTimeStr);
       const sel = selectedHour===h;
       return (
         <button key={h} onClick={()=>isAvailable&&setSH(h)} disabled={!isAvailable} style={{
