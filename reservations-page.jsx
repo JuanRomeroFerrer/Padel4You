@@ -213,7 +213,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
     }
   }
 
-  const courtObj = COURTS.find(c => c.id === selectedCourt);
+  const courtObj = courts.find(c => c.id === selectedCourt);
 
   // ── Step bar ─────────────────────────────────────────────────────────────
   function StepBar() {
@@ -319,7 +319,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
           </button>
           <div>
             <h2 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'clamp(20px,4vw,24px)', color:'var(--navy)', letterSpacing:'-0.03em' }}>Selecciona la fecha</h2>
-            <p style={{ color:'var(--text-muted)', fontSize:'13px' }}>{courtObj?.name} · €{COURT_PRICE}/sesión</p>
+            <p style={{ color:'var(--text-muted)', fontSize:'13px' }}>{courtObj?.name} · €{courtObj?.price_per_session || DEFAULT_PRICE}/sesión</p>
           </div>
         </div>
         <div style={{ background:'white', borderRadius:'var(--radius-lg)', border:'1.5px solid var(--gray-light)', overflow:'hidden' }}>
