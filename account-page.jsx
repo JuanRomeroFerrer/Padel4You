@@ -272,8 +272,8 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
                   <Icon name="calendar" size={18} color={r.status === 'cancelled' ? 'var(--red)' : 'var(--green)'} />
                 </div>
                 <div style={{ flex: 1, minWidth: '160px' }}>
-                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '15px', color: 'var(--navy)' }}>{r.court}</div>
-                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtDateShort(r.date)} · {fmtTime(r.startTime)} h</div>
+                  <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: '15px', color: 'var(--navy)' }}>{r.court_name}</div>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '2px' }}>{fmtDateShort(r.date)} · {fmtTime(r.start_time)} h</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                   <Badge variant={sv}>{sl}</Badge>
