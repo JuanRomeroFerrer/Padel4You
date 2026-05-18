@@ -4,7 +4,9 @@ const { Icon, Btn, InputField, Badge, Breadcrumbs } = window;
 const MONTHS_ES_SHORT = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 
 function fmtDateShort(dateStr) {
-  const [y, m, d] = dateStr.split('-');
+  // Handle ISO timestamps like "2026-05-19T00:00:00.000Z"
+  const dateOnly = dateStr.split('T')[0];
+  const [y, m, d] = dateOnly.split('-');
   return `${d} ${MONTHS_ES_SHORT[parseInt(m,10)-1]} ${y}`;
 }
 
