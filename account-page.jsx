@@ -42,7 +42,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
 
         await apiLogin(email, pass);
         showNotification({ type: 'success', title: '¡Bienvenido de nuevo!', message: 'Sesión iniciada correctamente 👋' });
-        setPage('home');
+        setPage('account');
       } catch (error) {
         setLocalError(error.message || 'Error al iniciar sesión. Verifica tus credenciales.');
         setErrors({ api: true });
@@ -117,7 +117,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
 
         await apiRegister(form.name, form.email, form.phone, form.pass);
         showNotification({ type: 'success', title: '¡Cuenta creada!', message: `Bienvenido/a, ${form.name.split(' ')[0]}!` });
-        setPage('home');
+        setPage('account');
       } catch (error) {
         setLocalError(error.message || 'Error al crear la cuenta. Por favor intenta nuevamente.');
         setErrors({ api: true });
