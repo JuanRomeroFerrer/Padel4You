@@ -93,12 +93,12 @@ function Btn({ children, variant = 'primary', size = 'md', onClick, disabled, ty
 }
 
 // ─── InputField ────────────────────────────────────────────────────────────
-function InputField({ label, type = 'text', value, onChange, placeholder, required, error, icon, hint }) {
+function InputField({ label, type = 'text', value, onChange, placeholder, required, error, icon, hint, disabled = false }) {
   const [focused, setFocused] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const inputType = type === 'password' ? (showPw ? 'text' : 'password') : type;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', opacity: disabled ? 0.6 : 1 }}>
       {label && (
         <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text)', letterSpacing: '0.01em' }}>
           {label}{required && <span style={{ color: 'var(--red)', marginLeft: '3px' }}>*</span>}
@@ -112,20 +112,22 @@ function InputField({ label, type = 'text', value, onChange, placeholder, requir
         )}
         <input
           type={inputType} value={value} onChange={onChange}
-          placeholder={placeholder} required={required}
-          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          placeholder={placeholder} required={required} disabled={disabled}
+          onFocus={() => !disabled && setFocused(true)} onBlur={() => setFocused(false)}
           style={{
             width: '100%',
             padding: `11px ${type === 'password' ? '42px' : '14px'} 11px ${icon ? '40px' : '14px'}`,
             border: `1.5px solid ${error ? 'var(--red)' : focused ? 'var(--green)' : 'var(--gray-mid)'}`,
             borderRadius: '10px', fontSize: '14px', color: 'var(--text)',
-            background: 'var(--white)', outline: 'none', transition: 'border-color 0.18s, box-shadow 0.18s',
+            background: disabled ? 'var(--gray-light)' : 'var(--white)',
+            outline: 'none', transition: 'border-color 0.18s, box-shadow 0.18s',
             boxShadow: focused ? `0 0 0 3px ${error ? 'var(--red-pale)' : 'var(--green-pale)'}` : 'none',
+            cursor: disabled ? 'not-allowed' : 'text',
           }}
         />
         {type === 'password' && (
-          <button type="button" onClick={() => setShowPw(p => !p)}
-            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray)', padding: '4px' }}>
+          <button type="button" onClick={() => !disabled && setShowPw(p => !p)} disabled={disabled}
+            style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: disabled ? 'not-allowed' : 'pointer', color: 'var(--gray)', padding: '4px' }}>
             <Icon name={showPw ? 'eye-off' : 'eye'} size={16} />
           </button>
         )}
@@ -136,6 +138,29 @@ function InputField({ label, type = 'text', value, onChange, placeholder, requir
           <Icon name="x-circle" size={12} /> {error}
         </span>
       )}
+    </div>
+  );
+}
+
+// ─── LoadingSpinner ────────────────────────────────────────────────────────
+function LoadingSpinner({ message = 'Cargando...' }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      padding: '40px 20px', gap: '16px',
+    }}>
+      <div style={{
+        width: '40px', height: '40px', border: '3px solid var(--gray-light)',
+        borderTop: '3px solid var(--green)', borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+      }} />
+      <p style={{ fontSize: '14px', color: 'var(--text-muted)', textAlign: 'center' }}>{message}</p>
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
@@ -165,13 +190,14 @@ function Badge({ children, variant = 'default' }) {
 function Toast({ notification, onDismiss }) {
   useEffect(() => {
     if (!notification) return;
-    const t = setTimeout(onDismiss, 4200);
+    const t = setTimeout(onDismiss, 5000);
     return () => clearTimeout(t);
   }, [notification]);
   if (!notification) return null;
   const cfg = {
     success: { bg: 'var(--navy)', accent: 'var(--green-bright)', icon: 'check-circle' },
-    error:   { bg: 'oklch(38% 0.18 25)', accent: 'white', icon: 'x-circle' },
+    error:   { bg: 'oklch(54% 0.22 25)', accent: 'white', icon: 'x-circle' },
+    warning: { bg: 'var(--amber)', accent: 'white', icon: 'zap' },
     info:    { bg: 'var(--navy)', accent: 'oklch(72% 0.16 230)', icon: 'info' },
   }[notification.type] || { bg: 'var(--navy)', accent: 'var(--green-bright)', icon: 'info' };
   return (
@@ -395,4 +421,4 @@ function Breadcrumbs({ items, setPage }) {
   );
 }
 
-Object.assign(window, { Icon, ImgPlaceholder, Btn, InputField, Badge, Toast, Nav, Footer, Breadcrumbs });
+Object.assign(window, { Icon, ImgPlaceholder, Btn, InputField, LoadingSpinner, Badge, Toast, Nav, Footer, Breadcrumbs });

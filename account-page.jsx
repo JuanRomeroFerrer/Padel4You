@@ -8,7 +8,7 @@ function fmtDateShort(dateStr) {
   return `${d} ${MONTHS_ES_SHORT[parseInt(m,10)-1]} ${y}`;
 }
 
-function AccountPage({ user, setUser, reservations, cancelReservation, setPage, showNotification }) {
+function AccountPage({ user, setUser, reservations, cancelReservation, setPage, showNotification, apiLogin, apiLogout, apiRegister, loading, setLoading, apiError, setApiError }) {
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [profileTab, setProfileTab] = useState('reservas'); // 'reservas' | 'suscripcion' | 'perfil'
 
@@ -18,6 +18,8 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
     const [pass, setPass] = useState('');
     const [remember, setRemember] = useState(false);
     const [errors, setErrors] = useState({});
+    const [localLoading, setLocalLoading] = useState(false);
+    const [localError, setLocalError] = useState('');
 
     function validate() {
       const e = {};
@@ -28,51 +30,58 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
       return e;
     }
 
-    function handleLogin(ev) {
+    async function handleLogin(ev) {
       ev.preventDefault();
       const e = validate();
       if (Object.keys(e).length) { setErrors(e); return; }
-      // Simulate login
-      const u = {
-        name: 'Carlos Martínez',
-        email,
-        phone: '+34 612 345 678',
-        joinDate: '2024-01-15',
-        subscription: { plan: 'Elite Anual', price: 249, billingCycle: 'año', renewalDate: '2027-01-15' },
-      };
-      setUser(u);
-      showNotification({ type: 'success', title: '¡Bienvenido de nuevo!', message: `Hola, ${u.name.split(' ')[0]} 👋` });
+
+      try {
+        setLocalLoading(true);
+        setLocalError('');
+        setErrors({});
+
+        await apiLogin(email, pass);
+        showNotification({ type: 'success', title: '¡Bienvenido de nuevo!', message: 'Sesión iniciada correctamente 👋' });
+        setPage('home');
+      } catch (error) {
+        setLocalError(error.message || 'Error al iniciar sesión. Verifica tus credenciales.');
+        setErrors({ api: true });
+      } finally {
+        setLocalLoading(false);
+      }
     }
 
     return (
       <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {localError && (
+          <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
+            {localError}
+          </div>
+        )}
         <InputField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="tu@email.com" required icon="mail" error={errors.email} />
+          placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
         <InputField label="Contraseña" type="password" value={pass} onChange={e => setPass(e.target.value)}
-          placeholder="••••••••" required icon="shield" error={errors.pass} />
+          placeholder="••••••••" required icon="shield" error={errors.pass} disabled={localLoading} />
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text)' }}>
-            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text)', opacity: localLoading ? 0.5 : 1, pointerEvents: localLoading ? 'none' : 'auto' }}>
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} disabled={localLoading}
               style={{ width: '16px', height: '16px', accentColor: 'var(--green)', cursor: 'pointer' }} />
             Recordarme
           </label>
-          <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontSize: '13px', fontWeight: 600, padding: 0 }}>
+          <button type="button" disabled={localLoading} style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontSize: '13px', fontWeight: 600, padding: 0, opacity: localLoading ? 0.5 : 1 }}>
             ¿Olvidaste tu contraseña?
           </button>
         </div>
-        <Btn type="submit" variant="primary" size="lg" fullWidth>
-          <Icon name="arrow-right" size={17} /> Iniciar sesión
+        <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
+          {localLoading ? '⏳ Iniciando sesión…' : (<><Icon name="arrow-right" size={17} /> Iniciar sesión</>)}
         </Btn>
         <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
           ¿No tienes cuenta?{' '}
-          <button type="button" onClick={() => setAuthTab('register')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0 }}>
+          <button type="button" onClick={() => setAuthTab('register')} disabled={localLoading}
+            style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
             Regístrate gratis
           </button>
         </p>
-        <div style={{ background: 'var(--green-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--green)', borderLeft: '3px solid var(--green)' }}>
-          <strong>Demo:</strong> Usa cualquier email válido y una contraseña de 6+ caracteres.
-        </div>
       </form>
     );
   }
@@ -81,6 +90,8 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
   function RegisterForm() {
     const [form, setForm] = useState({ name: '', email: '', phone: '', pass: '', pass2: '' });
     const [errors, setErrors] = useState({});
+    const [localLoading, setLocalLoading] = useState(false);
+    const [localError, setLocalError] = useState('');
     const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
     function validate() {
@@ -89,38 +100,51 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
       if (!form.email) e.email = 'El email es obligatorio';
       else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email no válido';
       if (!form.phone) e.phone = 'El teléfono es obligatorio';
-      if (!form.pass || form.pass.length < 6) e.pass = 'Mínimo 6 caracteres';
+      if (!form.pass || form.pass.length < 8) e.pass = 'Mínimo 8 caracteres';
       if (form.pass !== form.pass2) e.pass2 = 'Las contraseñas no coinciden';
       return e;
     }
 
-    function handleRegister(ev) {
+    async function handleRegister(ev) {
       ev.preventDefault();
       const e = validate();
       if (Object.keys(e).length) { setErrors(e); return; }
-      const u = {
-        name: form.name, email: form.email, phone: form.phone,
-        joinDate: new Date().toISOString().slice(0, 10),
-        subscription: null,
-      };
-      setUser(u);
-      showNotification({ type: 'success', title: '¡Cuenta creada!', message: `Bienvenido/a, ${form.name.split(' ')[0]}!` });
+
+      try {
+        setLocalLoading(true);
+        setLocalError('');
+        setErrors({});
+
+        await apiRegister(form.name, form.email, form.phone, form.pass);
+        showNotification({ type: 'success', title: '¡Cuenta creada!', message: `Bienvenido/a, ${form.name.split(' ')[0]}!` });
+        setPage('home');
+      } catch (error) {
+        setLocalError(error.message || 'Error al crear la cuenta. Por favor intenta nuevamente.');
+        setErrors({ api: true });
+      } finally {
+        setLocalLoading(false);
+      }
     }
 
     return (
       <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <InputField label="Nombre completo" value={form.name} onChange={set('name')} placeholder="Tu nombre" required icon="user" error={errors.name} />
-        <InputField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="tu@email.com" required icon="mail" error={errors.email} />
-        <InputField label="Teléfono" value={form.phone} onChange={set('phone')} placeholder="+34 600 000 000" required icon="phone" error={errors.phone} />
-        <InputField label="Contraseña" type="password" value={form.pass} onChange={set('pass')} placeholder="Mínimo 6 caracteres" required icon="shield" error={errors.pass} />
-        <InputField label="Confirmar contraseña" type="password" value={form.pass2} onChange={set('pass2')} placeholder="Repite la contraseña" required icon="shield" error={errors.pass2} />
-        <Btn type="submit" variant="primary" size="lg" fullWidth>
-          <Icon name="user" size={17} /> Crear cuenta gratuita
+        {localError && (
+          <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
+            {localError}
+          </div>
+        )}
+        <InputField label="Nombre completo" value={form.name} onChange={set('name')} placeholder="Tu nombre" required icon="user" error={errors.name} disabled={localLoading} />
+        <InputField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
+        <InputField label="Teléfono" value={form.phone} onChange={set('phone')} placeholder="+34 600 000 000" required icon="phone" error={errors.phone} disabled={localLoading} />
+        <InputField label="Contraseña" type="password" value={form.pass} onChange={set('pass')} placeholder="Mínimo 8 caracteres" required icon="shield" error={errors.pass} disabled={localLoading} />
+        <InputField label="Confirmar contraseña" type="password" value={form.pass2} onChange={set('pass2')} placeholder="Repite la contraseña" required icon="shield" error={errors.pass2} disabled={localLoading} />
+        <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
+          {localLoading ? '⏳ Creando cuenta…' : (<><Icon name="user" size={17} /> Crear cuenta gratuita</>)}
         </Btn>
         <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
           ¿Ya tienes cuenta?{' '}
-          <button type="button" onClick={() => setAuthTab('login')}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0 }}>
+          <button type="button" onClick={() => setAuthTab('login')} disabled={localLoading}
+            style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
             Iniciar sesión
           </button>
         </p>
@@ -347,12 +371,12 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
         <div style={{ maxWidth: '900px', margin: '0 auto', padding: 'clamp(24px,4vw,48px) clamp(16px,4vw,24px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', flexWrap: 'wrap', gap: '12px' }}>
             <Breadcrumbs items={[{ label: 'Inicio', page: 'home' }, { label: 'Mi Cuenta' }]} setPage={setPage} />
-            <button onClick={() => { setUser(null); showNotification({ type: 'info', title: 'Sesión cerrada', message: '¡Hasta pronto!' }); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600, fontFamily: 'var(--font-heading)', transition: 'color 0.15s' }}
-              onMouseOver={e => e.currentTarget.style.color = 'var(--red)'}
-              onMouseOut={e => e.currentTarget.style.color = 'var(--text-muted)'}
+            <button onClick={apiLogout} disabled={loading}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', cursor: loading ? 'not-allowed' : 'pointer', color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600, fontFamily: 'var(--font-heading)', transition: 'color 0.15s', opacity: loading ? 0.5 : 1 }}
+              onMouseOver={e => !loading && (e.currentTarget.style.color = 'var(--red)')}
+              onMouseOut={e => !loading && (e.currentTarget.style.color = 'var(--text-muted)')}
             >
-              <Icon name="logout" size={16} /> Cerrar sesión
+              <Icon name="logout" size={16} /> {loading ? 'Cerrando…' : 'Cerrar sesión'}
             </button>
           </div>
 

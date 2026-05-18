@@ -1,21 +1,9 @@
-const { useState, useMemo } = React;
+const { useState, useMemo, useEffect } = React;
 const { Icon, Btn, Badge, Breadcrumbs } = window;
-
-const COURT_PRICE = 20;
-
-const COURTS = [
-  { id: 1, name: 'Pista 1', type: 'Cristal panorámico', level: 'Todos los niveles' },
-  { id: 2, name: 'Pista 2', type: 'Cristal panorámico', level: 'Intermedio / Avanzado' },
-  { id: 3, name: 'Pista 3', type: 'Muro lateral', level: 'Principiante' },
-];
 
 const DAYS_ES    = ['L','M','X','J','V','S','D'];
 const MONTHS_ES  = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-
-function isOccupied(courtId, date, slot) {
-  const seed = courtId * 31337 + date.getFullYear() * 500 + date.getMonth() * 100 + date.getDate() * 10 + Math.round(slot * 2);
-  return (((seed * 1103515245 + 12345) >>> 0) % 100) < 32;
-}
+const DEFAULT_PRICE = 20;
 
 function getSlots(dayOfWeek) {
   if (dayOfWeek === 0) return [];
@@ -28,15 +16,86 @@ function fmtSlot(h) { const hr = Math.floor(h); const mn = (h % 1 >= 0.5) ? '30'
 function fmtSlotEnd(h) { return fmtSlot(h + 1.5); }
 function fmtDate(d) { return `${DAYS_ES[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTHS_ES[d.getMonth()]}`; }
 
-function ReservationsPage({ user, setPage, addReservation, showNotification }) {
+function ReservationsPage({ user, setPage, addReservation, showNotification, authToken, apiCall, loading, setLoading, fetchUserReservations }) {
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
   const [step, setStep]           = useState(1);
+  const [courts, setCourts]       = useState([]);
   const [selectedCourt, setSC]    = useState(null);
   const [calYear, setCalYear]     = useState(today.getFullYear());
   const [calMonth, setCalMonth]   = useState(today.getMonth());
   const [selectedDate, setSD]     = useState(null);
+  const [availableSlots, setAvailableSlots] = useState([]);
   const [selectedHour, setSH]     = useState(null);
   const [confirming, setConfirming] = useState(false);
+  const [pendingReservation, setPendingReservation] = useState(null);
+  const [holdCountdown, setHoldCountdown] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
+
+  // Fetch courts on mount
+  useEffect(() => {
+    async function loadCourts() {
+      try {
+        setApiLoading(true);
+        const data = await apiCall('GET', '/courts', null);
+        if (data && data.courts) {
+          setCourts(data.courts);
+        }
+      } catch (error) {
+        console.error('Error fetching courts:', error);
+        showNotification({ type: 'error', title: 'Error', message: 'No se pudieron cargar las pistas' });
+      } finally {
+        setApiLoading(false);
+      }
+    }
+    loadCourts();
+  }, []);
+
+  // Fetch availability when date or court changes
+  useEffect(() => {
+    async function loadAvailability() {
+      if (!selectedDate || !selectedCourt) {
+        setAvailableSlots([]);
+        return;
+      }
+
+      try {
+        const dateStr = selectedDate.toISOString().slice(0, 10);
+        const data = await apiCall('GET', `/availability/courts/${selectedCourt}/date/${dateStr}`, null);
+        if (data && data.availableSlots) {
+          setAvailableSlots(data.availableSlots || []);
+        }
+      } catch (error) {
+        console.error('Error fetching availability:', error);
+        setAvailableSlots([]);
+      }
+    }
+    loadAvailability();
+  }, [selectedDate, selectedCourt]);
+
+  // Handle hold countdown
+  useEffect(() => {
+    if (!pendingReservation) {
+      setHoldCountdown(null);
+      return;
+    }
+
+    const holdUntil = new Date(pendingReservation.holdUntil);
+    const interval = setInterval(() => {
+      const now = new Date();
+      const remaining = Math.max(0, Math.floor((holdUntil - now) / 1000));
+
+      if (remaining === 0) {
+        setHoldCountdown(null);
+        setPendingReservation(null);
+        showNotification({ type: 'error', title: 'Tiempo expirado', message: 'El hold de tu reserva ha expirado' });
+        clearInterval(interval);
+      } else {
+        setHoldCountdown(remaining);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [pendingReservation]);
 
   const calDays = useMemo(() => {
     const first  = new Date(calYear, calMonth, 1);
@@ -67,15 +126,91 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
     setConfirming(true);
   }
 
-  function finalizeBooking() {
-    const court = COURTS.find(c => c.id === selectedCourt);
-    addReservation({ id: 'R'+Date.now(), court: court.name, courtId: selectedCourt,
-      date: selectedDate.toISOString().slice(0,10),
-      time: `${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`,
-      status: 'confirmed', price: COURT_PRICE });
-    showNotification({ type: 'success', title: '¡Reserva confirmada!', message: `${court.name} · ${fmtDate(selectedDate)} · ${fmtSlot(selectedHour)}` });
-    setConfirming(false); setStep(1); setSC(null); setSD(null); setSH(null);
-    setPage('account');
+  async function finalizeBooking() {
+    if (!authToken) {
+      showNotification({ type: 'error', title: 'Sesión requerida', message: 'Debes estar logueado para confirmar' });
+      return;
+    }
+
+    try {
+      setApiLoading(true);
+
+      const court = courts.find(c => c.id === selectedCourt);
+      const dateStr = selectedDate.toISOString().slice(0, 10);
+
+      const response = await apiCall('POST', '/reservations', {
+        courtId: selectedCourt,
+        date: dateStr,
+        startTime: fmtSlot(selectedHour),
+        endTime: fmtSlotEnd(selectedHour)
+      });
+
+      if (response && response.reservation) {
+        const res = response.reservation;
+
+        // Store pending reservation for payment confirmation
+        setPendingReservation(res);
+        setStep(4); // Move to payment confirmation step
+
+        showNotification({
+          type: 'success',
+          title: '¡Reserva en espera!',
+          message: `Tu reserva está retenida por ${response.holdDurationMinutes} minutos`
+        });
+
+        setConfirming(false);
+      }
+    } catch (error) {
+      showNotification({ type: 'error', title: 'Error en reserva', message: error.message });
+    } finally {
+      setApiLoading(false);
+    }
+  }
+
+  async function confirmPayment(reservationId) {
+    if (!authToken) return;
+
+    try {
+      setApiLoading(true);
+      const response = await apiCall('PUT', `/reservations/${reservationId}/confirm`, {});
+
+      if (response && response.reservation) {
+        showNotification({ type: 'success', title: '¡Pago confirmado!', message: 'Tu reserva ha sido confirmada' });
+
+        // Reset form
+        setPendingReservation(null);
+        setStep(1);
+        setSC(null);
+        setSD(null);
+        setSH(null);
+
+        // Reload user reservations
+        await fetchUserReservations();
+
+        setPage('account');
+      }
+    } catch (error) {
+      showNotification({ type: 'error', title: 'Error', message: error.message });
+    } finally {
+      setApiLoading(false);
+    }
+  }
+
+  async function cancelPendingReservation(reservationId) {
+    if (!authToken) return;
+
+    try {
+      setApiLoading(true);
+      await apiCall('DELETE', `/reservations/${reservationId}`, {});
+
+      showNotification({ type: 'info', title: 'Reserva cancelada', message: 'Tu reserva ha sido cancelada' });
+      setPendingReservation(null);
+      setStep(1);
+    } catch (error) {
+      showNotification({ type: 'error', title: 'Error', message: error.message });
+    } finally {
+      setApiLoading(false);
+    }
   }
 
   const courtObj = COURTS.find(c => c.id === selectedCourt);
@@ -83,6 +218,15 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
   // ── Step bar ─────────────────────────────────────────────────────────────
   function StepBar() {
     const steps = ['Pista','Fecha','Horario'];
+    if (step === 4) {
+      return (
+        <div style={{ marginBottom:'28px', background:'var(--amber-pale)', borderRadius:'var(--radius-lg)', padding:'14px 16px', fontSize:'13px', color:'var(--amber)', display:'flex', alignItems:'center', gap:'10px' }}>
+          <Icon name="clock" size={16} color="var(--amber)"/>
+          <strong>Paso 4 de 4:</strong> Confirma tu pago (el hold expira en {holdCountdown ? `${Math.ceil(holdCountdown/60)}:${String(holdCountdown%60).padStart(2,'0')}` : '0:00'})
+        </div>
+      );
+    }
+
     return (
       <div style={{ display:'flex', alignItems:'center', marginBottom:'28px' }}>
         {steps.map((s, i) => {
@@ -115,13 +259,22 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
 
   // ── Court step ───────────────────────────────────────────────────────────
   function CourtStep() {
+    if (apiLoading && courts.length === 0) {
+      return (
+        <div style={{ animation:'fadeUp 0.3s ease', textAlign: 'center', padding: '40px 20px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>Cargando pistas...</p>
+        </div>
+      );
+    }
+
     return (
       <div style={{ animation:'fadeUp 0.3s ease' }}>
         <h2 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'clamp(20px,4vw,24px)', color:'var(--navy)', marginBottom:'6px', letterSpacing:'-0.03em' }}>Selecciona una pista</h2>
-        <p style={{ color:'var(--text-muted)', fontSize:'14px', marginBottom:'20px' }}>Tres pistas con diferentes características</p>
+        <p style={{ color:'var(--text-muted)', fontSize:'14px', marginBottom:'20px' }}>{courts.length} pistas disponibles</p>
         <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          {COURTS.map(c => {
+          {courts.map(c => {
             const sel = selectedCourt === c.id;
+            const price = c.price_per_session || DEFAULT_PRICE;
             return (
               <button key={c.id} onClick={() => { setSC(c.id); setStep(2); }} style={{
                 background: sel?'var(--navy)':'white',
@@ -142,7 +295,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
                   <div style={{ fontSize:'13px', color:sel?'oklch(78% 0.02 258)':'var(--text-muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{c.type} · {c.level}</div>
                 </div>
                 <div style={{ textAlign:'right', flexShrink:0 }}>
-                  <span style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'18px', color:sel?'var(--green-bright)':'var(--navy)' }}>€{COURT_PRICE}</span>
+                  <span style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'18px', color:sel?'var(--green-bright)':'var(--navy)' }}>€{price}</span>
                   <div style={{ fontSize:'11px', color:sel?'oklch(70% 0.02 258)':'var(--text-muted)' }}>/sesión</div>
                 </div>
                 {sel && <Icon name="check-circle" size={20} color="var(--green-bright)"/>}
@@ -220,22 +373,23 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
     const isSun = selectedDate && selectedDate.getDay()===0;
 
     function renderSlot(h) {
-      const occ = isOccupied(selectedCourt, selectedDate, h);
+      const startTimeStr = fmtSlot(h);
+      const isAvailable = availableSlots.some(slot => slot.startTime === startTimeStr);
       const sel = selectedHour===h;
       return (
-        <button key={h} onClick={()=>!occ&&setSH(h)} disabled={occ} style={{
-          padding:'12px 8px', borderRadius:'10px', border:'none', cursor:occ?'not-allowed':'pointer',
-          background:sel?'var(--navy)':occ?'var(--red-pale)':'var(--green-pale)',
-          color:sel?'white':occ?'var(--red)':'var(--green)',
+        <button key={h} onClick={()=>isAvailable&&setSH(h)} disabled={!isAvailable} style={{
+          padding:'12px 8px', borderRadius:'10px', border:'none', cursor:isAvailable?'pointer':'not-allowed',
+          background:sel?'var(--navy)':!isAvailable?'var(--red-pale)':'var(--green-pale)',
+          color:sel?'white':!isAvailable?'var(--red)':'var(--green)',
           fontFamily:'var(--font-heading)', fontWeight:700, fontSize:'13px',
-          opacity:occ?0.7:1, transition:'all 0.15s',
+          opacity:!isAvailable?0.7:1, transition:'all 0.15s',
           outline:sel?'2px solid var(--green)':'none', outlineOffset:'2px',
           lineHeight:1.3, minHeight:'48px', whiteSpace:'nowrap',
         }}
-        onMouseOver={e=>{ if(!occ&&!sel) e.currentTarget.style.background='oklch(90% 0.07 152)'; }}
-        onMouseOut={e=>{ if(!occ&&!sel) e.currentTarget.style.background='var(--green-pale)'; }}
+        onMouseOver={e=>{ if(isAvailable&&!sel) e.currentTarget.style.background='oklch(90% 0.07 152)'; }}
+        onMouseOut={e=>{ if(isAvailable&&!sel) e.currentTarget.style.background='var(--green-pale)'; }}
         >
-          {fmtSlot(h)} – {fmtSlotEnd(h)}
+          {startTimeStr} – {fmtSlotEnd(h)}
         </button>
       );
     }
@@ -297,6 +451,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
   // ── Sidebar (desktop) ──────────────────────────────────────────────────────
   function BookingSidebar() {
     const hasAll = selectedCourt && selectedDate && selectedHour!==null;
+    const price = courtObj?.price_per_session || DEFAULT_PRICE;
     return (
       <div style={{ background:'white', border:'1.5px solid var(--gray-light)', borderRadius:'var(--radius-lg)', padding:'24px', boxShadow:'var(--shadow-sm)', position:'sticky', top:'86px' }}>
         <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:700, fontSize:'16px', color:'var(--navy)', marginBottom:'18px', letterSpacing:'-0.02em' }}>Resumen de reserva</h3>
@@ -305,7 +460,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
           ['Fecha', selectedDate?fmtDate(selectedDate):'—'],
           ['Horario', selectedHour!==null?`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`:'—'],
           ['Duración','1h 30min'],
-          ['Precio',`€${COURT_PRICE}/sesión`],
+          ['Precio',`€${price}/sesión`],
         ].map(([k,v])=>(
           <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', padding:'9px 0', borderBottom:'1px solid var(--gray-light)', gap:'10px' }}>
             <span style={{ fontSize:'13px', color:'var(--text-muted)' }}>{k}</span>
@@ -314,9 +469,9 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
         ))}
         <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 0 0' }}>
           <span style={{ fontFamily:'var(--font-heading)', fontWeight:700, fontSize:'15px', color:'var(--navy)' }}>Total</span>
-          <span style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'20px', color:'var(--green)', letterSpacing:'-0.03em' }}>€{COURT_PRICE}</span>
+          <span style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'20px', color:'var(--green)', letterSpacing:'-0.03em' }}>€{price}</span>
         </div>
-        {hasAll && <Btn variant="primary" size="lg" fullWidth onClick={handleConfirm} style={{ marginTop:'16px' }}><Icon name="check-circle" size={16}/> Confirmar Reserva</Btn>}
+        {hasAll && <Btn variant="primary" size="lg" fullWidth onClick={handleConfirm} disabled={apiLoading} style={{ marginTop:'16px' }}><Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar Reserva'}</Btn>}
         {!user && hasAll && <p style={{ fontSize:'12px', color:'var(--text-muted)', textAlign:'center', marginTop:'8px' }}>Se te pedirá iniciar sesión.</p>}
       </div>
     );
@@ -325,6 +480,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
   // ── Mobile sticky bar (shown in step 3 when slot selected) ─────────────────
   function MobileBar() {
     if (step!==3 || selectedHour===null) return null;
+    const price = courtObj?.price_per_session || DEFAULT_PRICE;
     return (
       <div className="mobile-confirm-bar" style={{
         position:'fixed', bottom:0, left:0, right:0, zIndex:800,
@@ -338,11 +494,11 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
             {courtObj?.name} · {selectedDate?fmtDate(selectedDate):''}
           </div>
           <div style={{ fontFamily:'var(--font-heading)', fontWeight:700, fontSize:'15px', color:'var(--navy)' }}>
-            {fmtSlot(selectedHour)} – {fmtSlotEnd(selectedHour)} &nbsp;·&nbsp; <span style={{ color:'var(--green)' }}>€{COURT_PRICE}</span>
+            {fmtSlot(selectedHour)} – {fmtSlotEnd(selectedHour)} &nbsp;·&nbsp; <span style={{ color:'var(--green)' }}>€{price}</span>
           </div>
         </div>
-        <Btn variant="primary" size="md" onClick={handleConfirm}>
-          <Icon name="check-circle" size={16}/> Confirmar
+        <Btn variant="primary" size="md" onClick={handleConfirm} disabled={apiLoading}>
+          <Icon name="check-circle" size={16}/> {apiLoading ? '...' : 'Confirmar'}
         </Btn>
       </div>
     );
@@ -351,6 +507,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
   // ── Confirmation modal ─────────────────────────────────────────────────────
   function ConfirmModal() {
     if (!confirming) return null;
+    const price = courtObj?.price_per_session || DEFAULT_PRICE;
     return (
       <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
         className="modal-backdrop">
@@ -361,15 +518,66 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
             <Icon name="calendar" size={24} color="var(--green)"/>
           </div>
           <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'20px', letterSpacing:'-0.03em' }}>Confirmar reserva</h3>
-          {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Duración','1h 30min'],['Total',`€${COURT_PRICE}`]].map(([k,v])=>(
+          {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Duración','1h 30min'],['Total',`€${price}`]].map(([k,v])=>(
             <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
               <span style={{ fontSize:'14px', color:'var(--text-muted)' }}>{k}</span>
               <span style={{ fontSize:'14px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
             </div>
           ))}
           <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
-            <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)}>Cancelar</Btn>
-            <Btn variant="primary" size="lg" fullWidth onClick={finalizeBooking}><Icon name="check-circle" size={16}/> Confirmar y Pagar</Btn>
+            <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)} disabled={apiLoading}>Cancelar</Btn>
+            <Btn variant="primary" size="lg" fullWidth onClick={finalizeBooking} disabled={apiLoading}><Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar y Pagar'}</Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Payment confirmation modal (step 4) ────────────────────────────────────
+  function PaymentConfirmationModal() {
+    if (step !== 4 || !pendingReservation) return null;
+
+    const minutes = Math.ceil(holdCountdown / 60);
+    const seconds = holdCountdown % 60;
+
+    return (
+      <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
+        className="modal-backdrop">
+        <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
+          <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
+          <div style={{ width:'60px', height:'60px', borderRadius:'50%', background:'var(--amber-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+            <Icon name="clock" size={28} color="var(--amber)"/>
+          </div>
+          <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'8px', letterSpacing:'-0.03em' }}>Confirma tu pago</h3>
+          <p style={{ fontSize:'14px', color:'var(--text-muted)', textAlign:'center', marginBottom:'24px' }}>Tu reserva está retenida temporalmente</p>
+
+          <div style={{ background:'var(--amber-pale)', borderRadius:'var(--radius-lg)', padding:'20px', marginBottom:'24px', textAlign:'center' }}>
+            <p style={{ fontSize:'12px', color:'var(--amber)', fontWeight:700, marginBottom:'8px', textTransform:'uppercase' }}>Tiempo restante</p>
+            <p style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'32px', color:'var(--amber)', letterSpacing:'-0.03em' }}>
+              {String(minutes).padStart(2,'0')}:{String(seconds).padStart(2,'0')}
+            </p>
+          </div>
+
+          {[
+            ['ID de Reserva', pendingReservation.id],
+            ['Pista', courtObj?.name],
+            ['Fecha', fmtDate(selectedDate)],
+            ['Horario', `${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],
+            ['Total', `€${courtObj?.price_per_session || DEFAULT_PRICE}`]
+          ].map(([k,v])=>(
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)', fontSize:'13px' }}>
+              <span style={{ color:'var(--text-muted)' }}>{k}</span>
+              <span style={{ fontWeight:600, color:'var(--navy)' }}>{v}</span>
+            </div>
+          ))}
+
+          <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
+            <Btn variant="ghost" size="lg" fullWidth onClick={() => cancelPendingReservation(pendingReservation.id)} disabled={apiLoading}>
+              Cancelar
+            </Btn>
+            <Btn variant="primary" size="lg" fullWidth onClick={() => confirmPayment(pendingReservation.id)} disabled={apiLoading || !holdCountdown}>
+              {apiLoading ? 'Procesando...' : holdCountdown ? 'Confirmar Pago' : 'Tiempo expirado'}
+            </Btn>
           </div>
         </div>
       </div>
@@ -382,21 +590,24 @@ function ReservationsPage({ user, setPage, addReservation, showNotification }) {
         <div style={{ marginBottom:'20px' }}>
           <Breadcrumbs items={[{label:'Inicio',page:'home'},{label:'Reservas'}]} setPage={setPage}/>
         </div>
-        <div className="res-grid">
-          <div>
-            <StepBar/>
-            {step===1 && <CourtStep/>}
-            {step===2 && <CalendarStep/>}
-            {step===3 && <TimeSlotsStep/>}
+        {step !== 4 && (
+          <div className="res-grid">
+            <div>
+              <StepBar/>
+              {step===1 && <CourtStep/>}
+              {step===2 && <CalendarStep/>}
+              {step===3 && <TimeSlotsStep/>}
+            </div>
+            <div className="res-sidebar">
+              <BookingSidebar/>
+            </div>
           </div>
-          <div className="res-sidebar">
-            <BookingSidebar/>
-          </div>
-        </div>
+        )}
       </div>
 
       <MobileBar/>
       <ConfirmModal/>
+      <PaymentConfirmationModal/>
 
       <style>{`
         .res-grid {

@@ -9,13 +9,8 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "cardRadius": 20
 }/*EDITMODE-END*/;
 
-const MOCK_RESERVATIONS = [
-  { id: 'R001', court: 'Pista 1', courtId: 1, date: '2026-05-28', time: '18:00 – 19:30', status: 'confirmed', price: 20 },
-  { id: 'R002', court: 'Pista 3', courtId: 3, date: '2026-06-03', time: '10:30 – 12:00', status: 'confirmed', price: 20 },
-  { id: 'R003', court: 'Pista 2', courtId: 2, date: '2026-04-18', time: '19:00 – 20:30', status: 'completed', price: 20 },
-  { id: 'R004', court: 'Pista 1', courtId: 1, date: '2026-03-10', time: '09:00 – 10:30', status: 'completed', price: 20 },
-  { id: 'R005', court: 'Pista 2', courtId: 2, date: '2026-02-05', time: '17:30 – 19:00', status: 'cancelled', price: 20 },
-];
+// Empty array - reservations will be fetched from API
+const EMPTY_RESERVATIONS = [];
 
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
@@ -34,12 +29,172 @@ function App() {
   const [reservations, setReservations] = useState(() => {
     try {
       const r = localStorage.getItem('p4y_reservations');
-      return r ? JSON.parse(r) : MOCK_RESERVATIONS;
-    } catch { return MOCK_RESERVATIONS; }
+      return r ? JSON.parse(r) : EMPTY_RESERVATIONS;
+    } catch { return EMPTY_RESERVATIONS; }
   });
+
+  // ── API State ──
+  const [authToken, setAuthTokenRaw] = useState(() => {
+    try { return localStorage.getItem('p4y_token') || null; } catch { return null; }
+  });
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
 
   // ── Notifications ──
   const [notification, setNotification] = useState(null);
+
+  // ────── UTILITY FUNCTIONS ──────
+
+  // Decodificar JWT sin librería externa
+  function decodeJWT(token) {
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const decoded = JSON.parse(atob(base64));
+      return decoded;
+    } catch (e) {
+      console.error('Error decodificando JWT:', e);
+      return null;
+    }
+  }
+
+  // Llamadas genéricas a API
+  async function apiCall(method, endpoint, body) {
+    try {
+      const options = {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      };
+
+      if (authToken) {
+        options.headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      if (body) options.body = JSON.stringify(body);
+
+      const response = await fetch(`${window.API_URL}${endpoint}`, options);
+
+      if (response.status === 401) {
+        // Token expirado - logout
+        setAuthTokenRaw(null);
+        setUserRaw(null);
+        localStorage.removeItem('p4y_token');
+        localStorage.removeItem('p4y_user');
+        showNotification({ type: 'error', title: 'Sesión expirada', message: 'Por favor inicia sesión nuevamente' });
+        return null;
+      }
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || `Error ${response.status}: ${response.statusText}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('API error:', error);
+      setApiError(error.message);
+      throw error;
+    }
+  }
+
+  // Login con API
+  async function apiLogin(email, password) {
+    try {
+      setLoading(true);
+      setApiError(null);
+      const data = await apiCall('POST', '/auth/login', { email, password });
+
+      if (data && data.token) {
+        setAuthTokenRaw(data.token);
+        localStorage.setItem('p4y_token', data.token);
+
+        const decoded = decodeJWT(data.token);
+        if (decoded) {
+          const userData = { id: decoded.id, email: decoded.email, ...data.user };
+          setUserRaw(userData);
+          localStorage.setItem('p4y_user', JSON.stringify(userData));
+        }
+
+        setLoading(false);
+        return true;
+      }
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
+  }
+
+  // Logout con API
+  async function apiLogout() {
+    try {
+      setLoading(true);
+      await apiCall('POST', '/auth/logout', {});
+
+      setAuthTokenRaw(null);
+      setUserRaw(null);
+      setReservations(EMPTY_RESERVATIONS);
+      localStorage.removeItem('p4y_token');
+      localStorage.removeItem('p4y_user');
+      showNotification({ type: 'success', title: 'Sesión cerrada', message: '¡Hasta pronto!' });
+      setLoading(false);
+    } catch (error) {
+      setLoading(false);
+      console.error('Logout error:', error);
+    }
+  }
+
+  // Registro con API
+  async function apiRegister(name, email, phone, password) {
+    try {
+      setLoading(true);
+      setApiError(null);
+      const data = await apiCall('POST', '/auth/register', { name, email, phone, password });
+
+      if (data && data.token) {
+        setAuthTokenRaw(data.token);
+        localStorage.setItem('p4y_token', data.token);
+
+        const decoded = decodeJWT(data.token);
+        if (decoded) {
+          const userData = { id: decoded.id, email: decoded.email, name, phone, ...data.user };
+          setUserRaw(userData);
+          localStorage.setItem('p4y_user', JSON.stringify(userData));
+        }
+
+        setLoading(false);
+        return true;
+      }
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
+  }
+
+  // Obtener reservas del usuario
+  async function fetchUserReservations() {
+    if (!authToken) return;
+    try {
+      const data = await apiCall('GET', '/reservations', null);
+      if (data && data.reservations) {
+        setReservations(data.reservations);
+        localStorage.setItem('p4y_reservations', JSON.stringify(data.reservations));
+      }
+    } catch (error) {
+      console.error('Error fetching reservations:', error);
+    }
+  }
+
+  // Wrapper para setAuthToken que también persiste
+  function setAuthToken(token) {
+    setAuthTokenRaw(token);
+    if (token) {
+      localStorage.setItem('p4y_token', token);
+    } else {
+      localStorage.removeItem('p4y_token');
+    }
+  }
+
+  // ────── EFFECTS ──────
 
   // Persist state
   useEffect(() => {
@@ -57,18 +212,37 @@ function App() {
     try { localStorage.setItem('p4y_reservations', JSON.stringify(reservations)); } catch {}
   }, [reservations]);
 
+  // Cargar usuario desde token al iniciar
+  useEffect(() => {
+    const savedToken = localStorage.getItem('p4y_token');
+    if (savedToken && !user) {
+      setAuthTokenRaw(savedToken);
+      const decoded = decodeJWT(savedToken);
+      if (decoded) {
+        setUserRaw({ id: decoded.id, email: decoded.email });
+        // Cargar reservas del usuario
+        (async () => {
+          try {
+            const data = await fetch(`${window.API_URL}/reservations`, {
+              headers: { 'Authorization': `Bearer ${savedToken}` }
+            }).then(r => r.json());
+            if (data && data.reservations) {
+              setReservations(data.reservations);
+              localStorage.setItem('p4y_reservations', JSON.stringify(data.reservations));
+            }
+          } catch (error) {
+            console.error('Error loading reservations:', error);
+          }
+        })();
+      }
+    }
+  }, []);
+
   // Scroll to top on page change
   useEffect(() => { window.scrollTo(0, 0); }, [page]);
 
   function setUser(u) {
     setUserRaw(u);
-    if (u) {
-      setReservations(prev => {
-        const existingIds = new Set(prev.map(r => r.id));
-        const toAdd = MOCK_RESERVATIONS.filter(r => !existingIds.has(r.id));
-        return toAdd.length ? [...toAdd, ...prev] : prev;
-      });
-    }
   }
 
   function addReservation(res) {
@@ -86,7 +260,12 @@ function App() {
   const radius = Number(tweaks.cardRadius) || 20;
   const accent = tweaks.accentColor || '#2e7d4f';
 
-  const pageProps = { setPage, user, setUser, reservations, addReservation, cancelReservation, showNotification, tweaks };
+  const pageProps = {
+    setPage, user, setUser, reservations, addReservation, cancelReservation,
+    showNotification, tweaks, authToken, setAuthToken, loading, setLoading,
+    apiError, setApiError, apiCall, apiLogin, apiLogout, apiRegister,
+    fetchUserReservations, decodeJWT
+  };
 
   const pageEl = (() => {
     switch (page) {
@@ -149,29 +328,22 @@ function App() {
             onChange={v => setTweak('featuredPlan', v)}
           />
         </TweakSection>
-        <TweakSection label="Demo rápida">
+        <TweakSection label="Sesión">
           <TweakButton
-            label={user ? `Cerrar sesión (${user.name?.split(' ')[0]})` : 'Simular login como Carlos'}
+            label={user ? `Cerrar sesión (${user.name?.split(' ')[0] || user.email})` : 'Ir a Login'}
             onClick={() => {
               if (user) {
-                setUserRaw(null);
-                showNotification({ type: 'info', title: 'Sesión cerrada', message: '¡Hasta pronto!' });
+                apiLogout();
               } else {
-                const u = {
-                  name: 'Carlos Martínez', email: 'carlos@padel4you.es',
-                  phone: '+34 612 345 678', joinDate: '2024-01-15',
-                  subscription: { plan: 'Elite Anual', price: 249, billingCycle: 'año', renewalDate: '2027-01-15' },
-                };
-                setUser(u);
-                showNotification({ type: 'success', title: '¡Bienvenido!', message: 'Sesión iniciada como Carlos' });
+                setPage('account');
               }
             }}
           />
-          <TweakButton
+          {user && <TweakButton
             label="Ir a Reservas"
             secondary
             onClick={() => setPage('reservations')}
-          />
+          />}
         </TweakSection>
       </TweaksPanel>
     </>
