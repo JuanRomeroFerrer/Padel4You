@@ -17,7 +17,7 @@ function fmtSlotEnd(h) { return fmtSlot(h + 1.5); }
 function fmtDate(d) { return `${DAYS_ES[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTHS_ES[d.getMonth()]}`; }
 
 function ReservationsPage({ user, setPage, addReservation, showNotification, authToken, apiCall, loading, setLoading, fetchUserReservations }) {
-  const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
+  const today = useMemo(() => { const d = new Date(); d.setUTCHours(0,0,0,0); return d; }, []);
   const [step, setStep]           = useState(1);
   const [courts, setCourts]       = useState([]);
   const [selectedCourt, setSC]    = useState(null);
@@ -98,9 +98,9 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }, [pendingReservation]);
 
   const calDays = useMemo(() => {
-    const first  = new Date(calYear, calMonth, 1);
-    const offset = (first.getDay() + 6) % 7;
-    const total  = new Date(calYear, calMonth + 1, 0).getDate();
+    const first  = new Date(Date.UTC(calYear, calMonth, 1));
+    const offset = (first.getUTCDay() + 6) % 7;
+    const total  = new Date(Date.UTC(calYear, calMonth + 1, 0)).getUTCDate();
     const cells  = [];
     for (let i = 0; i < offset; i++) cells.push(null);
     for (let d = 1; d <= total; d++) cells.push(d);
@@ -113,8 +113,8 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
   function selectDate(day) {
     if (!day) return;
-    const d = new Date(calYear, calMonth, day); d.setHours(0,0,0,0);
-    if (d < today || d.getDay() === 0) return;
+    const d = new Date(Date.UTC(calYear, calMonth, day)); d.setUTCHours(0,0,0,0);
+    if (d < today || d.getUTCDay() === 0) return;
     setSD(d); setSH(null); setStep(3);
   }
 
@@ -339,8 +339,8 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
             <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'2px' }}>
               {calDays.map((day, idx) => {
                 if (!day) return <div key={idx}/>;
-                const d = new Date(calYear, calMonth, day); d.setHours(0,0,0,0);
-                const isPast=d<today, isSun=d.getDay()===0, isToday=d.getTime()===today.getTime();
+                const d = new Date(Date.UTC(calYear, calMonth, day)); d.setUTCHours(0,0,0,0);
+                const isPast=d<today, isSun=d.getUTCDay()===0, isToday=d.getTime()===today.getTime();
                 const isSel=selectedDate&&d.getTime()===selectedDate.getTime();
                 const disabled=isPast||isSun;
                 return (
@@ -369,8 +369,8 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
   // ── Time slots step ────────────────────────────────────────────────────────
   function TimeSlotsStep() {
-    const slots = selectedDate ? getSlots(selectedDate.getDay()) : [];
-    const isSun = selectedDate && selectedDate.getDay()===0;
+    const slots = selectedDate ? getSlots(selectedDate.getUTCDay()) : [];
+    const isSun = selectedDate && selectedDate.getUTCDay()===0;
 
     function renderSlot(h) {
       const startTimeStr = fmtSlot(h);
