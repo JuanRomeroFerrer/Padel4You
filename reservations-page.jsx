@@ -72,9 +72,9 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
     loadAvailability();
   }, [selectedDate, selectedCourt]);
 
-  // Handle hold countdown
+  // Handle hold countdown (only when step 4 is visible)
   useEffect(() => {
-    if (!pendingReservation) {
+    if (step !== 4 || !pendingReservation) {
       setHoldCountdown(null);
       return;
     }
@@ -95,7 +95,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [pendingReservation]);
+  }, [step, pendingReservation]);
 
   const calDays = useMemo(() => {
     const first  = new Date(Date.UTC(calYear, calMonth, 1));
