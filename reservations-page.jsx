@@ -534,7 +534,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   // ── Payment confirmation modal (step 4) ────────────────────────────────────
-  function PaymentConfirmationModal() {
+  const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent() {
     if (step !== 4 || !pendingReservation) return null;
 
     const minutes = Math.ceil(holdCountdown / 60);
@@ -582,7 +582,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
         </div>
       </div>
     );
-  }
+  });
 
   return (
     <div className="page-anim" style={{ paddingTop:'66px', minHeight:'100vh', background:'var(--off-white)' }}>
