@@ -16,6 +16,17 @@ function fmtSlot(h) { const hr = Math.floor(h); const mn = (h % 1 >= 0.5) ? '30'
 function fmtSlotEnd(h) { return fmtSlot(h + 1.5); }
 function fmtDate(d) { return `${DAYS_ES[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTHS_ES[d.getMonth()]}`; }
 
+// Componente separado para el countdown (no causa parpadeo del modal)
+const CountdownDisplay = React.memo(function CountdownDisplay({ remaining }) {
+  const minutes = remaining !== null ? Math.ceil(remaining / 60) : 0;
+  const seconds = remaining !== null ? remaining % 60 : 0;
+  return (
+    <p style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'32px', color:'var(--amber)', letterSpacing:'-0.03em' }}>
+      {String(minutes).padStart(2,'0')}:{String(seconds).padStart(2,'0')}
+    </p>
+  );
+});
+
 function ReservationsPage({ user, setPage, addReservation, showNotification, authToken, apiCall, loading, setLoading, fetchUserReservations }) {
   const today = useMemo(() => { const d = new Date(); d.setUTCHours(0,0,0,0); return d; }, []);
   const [step, setStep]           = useState(1);
@@ -534,11 +545,10 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   // ── Payment confirmation modal (step 4) ────────────────────────────────────
-  const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent() {
+  const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent({ step, pendingReservation, holdCountdown, apiLoading, courtObj, selectedDate, selectedHour, onConfirm, onCancel }) {
     if (step !== 4 || !pendingReservation) return null;
 
-    const minutes = Math.ceil(holdCountdown / 60);
-    const seconds = holdCountdown % 60;
+    const isExpired = holdCountdown === null || holdCountdown === 0;
 
     return (
       <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
@@ -553,9 +563,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
           <div style={{ background:'var(--amber-pale)', borderRadius:'var(--radius-lg)', padding:'20px', marginBottom:'24px', textAlign:'center' }}>
             <p style={{ fontSize:'12px', color:'var(--amber)', fontWeight:700, marginBottom:'8px', textTransform:'uppercase' }}>Tiempo restante</p>
-            <p style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'32px', color:'var(--amber)', letterSpacing:'-0.03em' }}>
-              {String(minutes).padStart(2,'0')}:{String(seconds).padStart(2,'0')}
-            </p>
+            <CountdownDisplay remaining={holdCountdown} />
           </div>
 
           {[
@@ -572,16 +580,21 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
           ))}
 
           <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
-            <Btn variant="ghost" size="lg" fullWidth onClick={() => cancelPendingReservation(pendingReservation.id)} disabled={apiLoading}>
+            <Btn variant="ghost" size="lg" fullWidth onClick={() => onCancel(pendingReservation.id)} disabled={apiLoading}>
               Cancelar
             </Btn>
-            <Btn variant="primary" size="lg" fullWidth onClick={() => confirmPayment(pendingReservation.id)} disabled={apiLoading || !holdCountdown}>
-              {apiLoading ? 'Procesando...' : holdCountdown ? 'Confirmar Pago' : 'Tiempo expirado'}
+            <Btn variant="primary" size="lg" fullWidth onClick={() => onConfirm(pendingReservation.id)} disabled={apiLoading || isExpired}>
+              {apiLoading ? 'Procesando...' : !isExpired ? 'Confirmar Pago' : 'Tiempo expirado'}
             </Btn>
           </div>
         </div>
       </div>
     );
+  }, (prevProps, nextProps) => {
+    // Solo re-renderizar si estas props específicas cambian (no si holdCountdown cambia)
+    return prevProps.step === nextProps.step &&
+           prevProps.pendingReservation?.id === nextProps.pendingReservation?.id &&
+           prevProps.apiLoading === nextProps.apiLoading;
   });
 
   return (
@@ -607,7 +620,17 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
       <MobileBar/>
       <ConfirmModal/>
-      <PaymentConfirmationModal/>
+      <PaymentConfirmationModal
+        step={step}
+        pendingReservation={pendingReservation}
+        holdCountdown={holdCountdown}
+        apiLoading={apiLoading}
+        courtObj={courtObj}
+        selectedDate={selectedDate}
+        selectedHour={selectedHour}
+        onConfirm={confirmPayment}
+        onCancel={cancelPendingReservation}
+      />
 
       <style>{`
         .res-grid {
