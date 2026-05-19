@@ -16,13 +16,37 @@ function fmtSlot(h) { const hr = Math.floor(h); const mn = (h % 1 >= 0.5) ? '30'
 function fmtSlotEnd(h) { return fmtSlot(h + 1.5); }
 function fmtDate(d) { return `${DAYS_ES[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTHS_ES[d.getMonth()]}`; }
 
-// Componente separado para el countdown (no causa parpadeo del modal)
-const CountdownDisplay = React.memo(function CountdownDisplay({ remaining }) {
-  const minutes = remaining !== null ? Math.ceil(remaining / 60) : 0;
-  const seconds = remaining !== null ? remaining % 60 : 0;
+// Componente separado para el countdown (calcula basado en holdUntil, no en estado)
+const CountdownDisplay = React.memo(function CountdownDisplay({ holdUntil }) {
+  const [display, setDisplay] = React.useState('00:00');
+
+  React.useEffect(() => {
+    // Actualizar visualmente sin depender de re-renders de React
+    const updateDisplay = () => {
+      if (!holdUntil) {
+        setDisplay('00:00');
+        return;
+      }
+
+      const remaining = Math.max(0, Math.floor((new Date(holdUntil) - new Date()) / 1000));
+      const minutes = Math.ceil(remaining / 60);
+      const seconds = remaining % 60;
+      setDisplay(`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`);
+
+      // Siguiente actualización
+      if (remaining > 0) {
+        const delay = 1000 - (Date.now() % 1000); // Sincronizar con segundos
+        const timeout = setTimeout(updateDisplay, delay);
+        return () => clearTimeout(timeout);
+      }
+    };
+
+    updateDisplay();
+  }, [holdUntil]);
+
   return (
     <p style={{ fontFamily:'var(--font-heading)', fontWeight:900, fontSize:'32px', color:'var(--amber)', letterSpacing:'-0.03em' }}>
-      {String(minutes).padStart(2,'0')}:{String(seconds).padStart(2,'0')}
+      {display}
     </p>
   );
 });
@@ -39,7 +63,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   const [selectedHour, setSH]     = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [pendingReservation, setPendingReservation] = useState(null);
-  const [holdCountdown, setHoldCountdown] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
 
   // Fetch courts on mount
@@ -83,25 +106,19 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
     loadAvailability();
   }, [selectedDate, selectedCourt]);
 
-  // Handle hold countdown (only when step 4 is visible)
+  // Monitor hold expiration (only check when step 4 is visible)
   useEffect(() => {
-    if (step !== 4 || !pendingReservation) {
-      setHoldCountdown(null);
-      return;
-    }
+    if (step !== 4 || !pendingReservation) return;
 
     const holdUntil = new Date(pendingReservation.holdUntil);
-    const interval = setInterval(() => {
-      const now = new Date();
-      const remaining = Math.max(0, Math.floor((holdUntil - now) / 1000));
 
+    // Only check every second if time expired (not update countdown constantly)
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((holdUntil - new Date()) / 1000));
       if (remaining === 0) {
-        setHoldCountdown(null);
         setPendingReservation(null);
         showNotification({ type: 'error', title: 'Tiempo expirado', message: 'El hold de tu reserva ha expirado' });
         clearInterval(interval);
-      } else {
-        setHoldCountdown(remaining);
       }
     }, 1000);
 
@@ -545,10 +562,11 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   // ── Payment confirmation modal (step 4) ────────────────────────────────────
-  const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent({ step, pendingReservation, holdCountdown, apiLoading, courtObj, selectedDate, selectedHour, onConfirm, onCancel }) {
+  const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent({ step, pendingReservation, apiLoading, courtObj, selectedDate, selectedHour, onConfirm, onCancel }) {
     if (step !== 4 || !pendingReservation) return null;
 
-    const isExpired = holdCountdown === null || holdCountdown === 0;
+    const remaining = pendingReservation ? Math.max(0, Math.floor((new Date(pendingReservation.holdUntil) - new Date()) / 1000)) : 0;
+    const isExpired = remaining === 0;
 
     return (
       <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
@@ -563,7 +581,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
 
           <div style={{ background:'var(--amber-pale)', borderRadius:'var(--radius-lg)', padding:'20px', marginBottom:'24px', textAlign:'center' }}>
             <p style={{ fontSize:'12px', color:'var(--amber)', fontWeight:700, marginBottom:'8px', textTransform:'uppercase' }}>Tiempo restante</p>
-            <CountdownDisplay remaining={holdCountdown} />
+            <CountdownDisplay holdUntil={pendingReservation?.holdUntil} />
           </div>
 
           {[
@@ -590,11 +608,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
         </div>
       </div>
     );
-  }, (prevProps, nextProps) => {
-    // Solo re-renderizar si estas props específicas cambian (no si holdCountdown cambia)
-    return prevProps.step === nextProps.step &&
-           prevProps.pendingReservation?.id === nextProps.pendingReservation?.id &&
-           prevProps.apiLoading === nextProps.apiLoading;
   });
 
   return (
@@ -623,7 +636,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
       <PaymentConfirmationModal
         step={step}
         pendingReservation={pendingReservation}
-        holdCountdown={holdCountdown}
         apiLoading={apiLoading}
         courtObj={courtObj}
         selectedDate={selectedDate}
