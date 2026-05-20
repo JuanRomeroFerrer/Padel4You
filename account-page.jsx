@@ -1,4 +1,4 @@
-const { useState, useMemo } = React;
+const { useState } = React;
 const { Icon, Btn, InputField, Badge, Breadcrumbs } = window;
 
 const MONTHS_ES_SHORT = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
@@ -164,9 +164,8 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
     );
   }
 
-  // Memoize form components to prevent re-mounting on parent re-renders
-  const loginFormEl = useMemo(() => <LoginForm />, []);
-  const registerFormEl = useMemo(() => <RegisterForm />, []);
+  // Render form components directly without memoization
+  // Memoization was causing input focus/state issues when typing
 
   // ── Auth page ──
   function AuthSection() {
@@ -191,7 +190,7 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
               ))}
             </div>
             <div style={{ padding: '32px 36px' }}>
-              {authTab === 'login' ? loginFormEl : registerFormEl}
+              {authTab === 'login' ? <LoginForm /> : <RegisterForm />}
             </div>
           </div>
         </div>
