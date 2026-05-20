@@ -51,7 +51,7 @@ const CountdownDisplay = React.memo(function CountdownDisplay({ holdUntil }) {
   );
 });
 
-function ReservationsPage({ user, setPage, addReservation, showNotification, authToken, apiCall, loading, setLoading, fetchUserReservations }) {
+function ReservationsPage({ user, setPage, addReservation, showNotification, apiCall, loading, setLoading, fetchUserReservations }) {
   const today = useMemo(() => { const d = new Date(); d.setUTCHours(0,0,0,0); return d; }, []);
   const [step, setStep]           = useState(1);
   const [courts, setCourts]       = useState([]);
@@ -64,6 +64,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   const [confirming, setConfirming] = useState(false);
   const [pendingReservation, setPendingReservation] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
+  const [guestForm, setGuestForm] = useState({ name: '', phone: '' });
 
   // Fetch courts on mount
   useEffect(() => {
@@ -147,31 +148,35 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   function handleConfirm() {
-    if (!user) {
-      showNotification({ type: 'info', title: 'Inicia sesión', message: 'Necesitas una cuenta para confirmar la reserva.' });
-      setPage('account'); return;
-    }
+    // Permitir tanto usuarios logueados como guests
     setConfirming(true);
   }
 
-  async function finalizeBooking() {
-    if (!authToken) {
-      showNotification({ type: 'error', title: 'Sesión requerida', message: 'Debes estar logueado para confirmar' });
-      return;
-    }
-
+  async function finalizeBooking(guestName = null, guestPhone = null) {
     try {
       setApiLoading(true);
 
       const court = courts.find(c => c.id === selectedCourt);
       const dateStr = selectedDate.toISOString().slice(0, 10);
 
-      const response = await apiCall('POST', '/reservations', {
+      const reservationData = {
         courtId: selectedCourt,
         date: dateStr,
         startTime: fmtSlot(selectedHour),
         endTime: fmtSlotEnd(selectedHour)
-      });
+      };
+
+      // Agregar datos de guest si no está logueado
+      if (!user) {
+        if (!guestName || !guestPhone) {
+          showNotification({ type: 'info', title: 'Datos requeridos', message: 'Por favor proporciona nombre y teléfono' });
+          return;
+        }
+        reservationData.guestName = guestName;
+        reservationData.guestPhone = guestPhone;
+      }
+
+      const response = await apiCall('POST', '/reservations', reservationData);
 
       if (response && response.reservation) {
         const res = response.reservation;
@@ -196,7 +201,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   async function confirmPayment(reservationId) {
-    if (!authToken) return;
+    if (!user) return;
 
     try {
       setApiLoading(true);
@@ -225,16 +230,22 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   }
 
   async function cancelPendingReservation(reservationId) {
-    if (!authToken) return;
+    if (!user) return;
 
     try {
       setApiLoading(true);
-      await apiCall('DELETE', `/reservations/${reservationId}`, {});
+      const response = await apiCall('DELETE', `/reservations/${reservationId}`, null);
 
-      showNotification({ type: 'info', title: 'Reserva cancelada', message: 'Tu reserva ha sido cancelada' });
-      setPendingReservation(null);
-      setStep(1);
+      if (response && response.success) {
+        showNotification({ type: 'success', title: 'Reserva cancelada', message: 'Tu reserva ha sido cancelada exitosamente' });
+        setPendingReservation(null);
+        setStep(1);
+
+        // Recarga las reservas del usuario
+        await fetchUserReservations();
+      }
     } catch (error) {
+      console.error('Error cancelando reserva:', error);
       showNotification({ type: 'error', title: 'Error', message: error.message });
     } finally {
       setApiLoading(false);
@@ -536,6 +547,58 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
   function ConfirmModal() {
     if (!confirming) return null;
     const price = courtObj?.price_per_session || DEFAULT_PRICE;
+
+    // Si no está logueado, mostrar formulario de guest
+    if (!user) {
+      return (
+        <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
+          className="modal-backdrop">
+          <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
+            <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
+            <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'var(--blue-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+              <Icon name="user" size={24} color="var(--navy)"/>
+            </div>
+            <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'8px', letterSpacing:'-0.03em' }}>Completa tus datos</h3>
+            <p style={{ fontSize:'13px', color:'var(--text-muted)', textAlign:'center', marginBottom:'20px' }}>Proporciona tu nombre y teléfono para completar la reserva</p>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'20px' }}>
+              <div>
+                <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Nombre</label>
+                <input type="text" placeholder="Tu nombre completo" value={guestForm.name}
+                  onChange={e => setGuestForm({...guestForm, name: e.target.value})}
+                  disabled={apiLoading}
+                  style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
+              </div>
+              <div>
+                <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Teléfono</label>
+                <input type="tel" placeholder="+34 600 000 000" value={guestForm.phone}
+                  onChange={e => setGuestForm({...guestForm, phone: e.target.value})}
+                  disabled={apiLoading}
+                  style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
+              </div>
+            </div>
+
+            {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Total',`€${price}`]].map(([k,v])=>(
+              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
+                <span style={{ fontSize:'13px', color:'var(--text-muted)' }}>{k}</span>
+                <span style={{ fontSize:'13px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
+              </div>
+            ))}
+
+            <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
+              <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)} disabled={apiLoading}>Cancelar</Btn>
+              <Btn variant="primary" size="lg" fullWidth
+                onClick={() => finalizeBooking(guestForm.name, guestForm.phone)}
+                disabled={apiLoading || !guestForm.name || !guestForm.phone}>
+                <Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Formulario para usuarios registrados
     return (
       <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
         className="modal-backdrop">
@@ -554,7 +617,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, aut
           ))}
           <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
             <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)} disabled={apiLoading}>Cancelar</Btn>
-            <Btn variant="primary" size="lg" fullWidth onClick={finalizeBooking} disabled={apiLoading}><Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar y Pagar'}</Btn>
+            <Btn variant="primary" size="lg" fullWidth onClick={() => finalizeBooking()} disabled={apiLoading}><Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar y Pagar'}</Btn>
           </div>
         </div>
       </div>
