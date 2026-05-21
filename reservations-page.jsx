@@ -287,24 +287,24 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   async function confirmPayment(reservationId) {
     try {
       setApiLoading(true);
-      const response = await apiCall('PUT', `/reservations/${reservationId}/confirm`, {});
+      const body = !user && pendingReservation?.guestPhone
+        ? { guestPhone: pendingReservation.guestPhone }
+        : {};
+      const response = await apiCall('PUT', `/reservations/${reservationId}/confirm`, body);
 
       if (response && response.reservation) {
         showNotification({ type: 'success', title: '¡Pago confirmado!', message: 'Tu reserva ha sido confirmada' });
 
-        // Reset form
         setPendingReservation(null);
         setStep(1);
         setSC(null);
         setSD(null);
         setSH(null);
 
-        // Reload user reservations only if logged in
         if (user) {
           await fetchUserReservations();
           setPage('account');
         } else {
-          // Guests go back to home after successful reservation
           setPage('home');
         }
       }
@@ -318,14 +318,16 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   async function cancelPendingReservation(reservationId) {
     try {
       setApiLoading(true);
-      const response = await apiCall('DELETE', `/reservations/${reservationId}`, null);
+      const body = !user && pendingReservation?.guestPhone
+        ? { guestPhone: pendingReservation.guestPhone }
+        : null;
+      const response = await apiCall('DELETE', `/reservations/${reservationId}`, body);
 
       if (response && response.success) {
         showNotification({ type: 'success', title: 'Reserva cancelada', message: 'Tu reserva ha sido cancelada exitosamente' });
         setPendingReservation(null);
         setStep(1);
 
-        // Reload user reservations only if logged in
         if (user) {
           await fetchUserReservations();
         }
