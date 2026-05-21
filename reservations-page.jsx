@@ -544,7 +544,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   }
 
   // ── Confirmation modal ─────────────────────────────────────────────────────
-  function ConfirmModal() {
+  const ConfirmModal = React.memo(function ConfirmModalComponent() {
     if (!confirming) return null;
     const price = courtObj?.price_per_session || DEFAULT_PRICE;
 
@@ -622,7 +622,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
         </div>
       </div>
     );
-  }
+  });
 
   // ── Payment confirmation modal (step 4) ────────────────────────────────────
   const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent({ step, pendingReservation, apiLoading, courtObj, selectedDate, selectedHour, onConfirm, onCancel }) {
