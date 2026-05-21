@@ -51,6 +51,91 @@ const CountdownDisplay = React.memo(function CountdownDisplay({ holdUntil }) {
   );
 });
 
+// ── Confirmation modal — FUERA de ReservationsPage para evitar re-renders ──────
+// El estado guestForm vive aquí, dentro del propio modal (Causa A + B)
+function ConfirmModal({ confirming, user, courtObj, selectedDate, selectedHour, apiLoading, onCancel, onConfirm }) {
+  const [guestForm, setGuestForm] = useState({ name: '', phone: '' });
+
+  if (!confirming) return null;
+  const price = courtObj?.price_per_session || DEFAULT_PRICE;
+
+  // Si no está logueado, mostrar formulario de guest
+  if (!user) {
+    return (
+      <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
+        className="modal-backdrop">
+        <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
+          <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
+          <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'var(--blue-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+            <Icon name="user" size={24} color="var(--navy)"/>
+          </div>
+          <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'8px', letterSpacing:'-0.03em' }}>Completa tus datos</h3>
+          <p style={{ fontSize:'13px', color:'var(--text-muted)', textAlign:'center', marginBottom:'20px' }}>Proporciona tu nombre y teléfono para completar la reserva</p>
+
+          <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'20px' }}>
+            <div>
+              <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Nombre</label>
+              <input type="text" placeholder="Tu nombre completo" value={guestForm.name}
+                onChange={e => setGuestForm(f => ({ ...f, name: e.target.value }))}
+                disabled={apiLoading}
+                style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
+            </div>
+            <div>
+              <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Teléfono</label>
+              <input type="tel" placeholder="+34 600 000 000" value={guestForm.phone}
+                onChange={e => setGuestForm(f => ({ ...f, phone: e.target.value }))}
+                disabled={apiLoading}
+                style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
+            </div>
+          </div>
+
+          {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Total',`€${price}`]].map(([k,v])=>(
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
+              <span style={{ fontSize:'13px', color:'var(--text-muted)' }}>{k}</span>
+              <span style={{ fontSize:'13px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
+            </div>
+          ))}
+
+          <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
+            <Btn variant="ghost" size="lg" fullWidth onClick={onCancel} disabled={apiLoading}>Cancelar</Btn>
+            <Btn variant="primary" size="lg" fullWidth
+              onClick={() => onConfirm(guestForm.name, guestForm.phone)}
+              disabled={apiLoading || !guestForm.name || !guestForm.phone}>
+              <Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar'}
+            </Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Formulario para usuarios registrados
+  return (
+    <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
+      className="modal-backdrop">
+      <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
+        <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
+        <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'var(--green-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+          <Icon name="calendar" size={24} color="var(--green)"/>
+        </div>
+        <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'20px', letterSpacing:'-0.03em' }}>Confirmar reserva</h3>
+        {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Duración','1h 30min'],['Total',`€${price}`]].map(([k,v])=>(
+          <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
+            <span style={{ fontSize:'14px', color:'var(--text-muted)' }}>{k}</span>
+            <span style={{ fontSize:'14px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
+          </div>
+        ))}
+        <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
+          <Btn variant="ghost" size="lg" fullWidth onClick={onCancel} disabled={apiLoading}>Cancelar</Btn>
+          <Btn variant="primary" size="lg" fullWidth onClick={() => onConfirm()} disabled={apiLoading}>
+            <Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar y Pagar'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReservationsPage({ user, setPage, addReservation, showNotification, apiCall, loading, setLoading, fetchUserReservations }) {
   const today = useMemo(() => { const d = new Date(); d.setUTCHours(0,0,0,0); return d; }, []);
   const [step, setStep]           = useState(1);
@@ -64,7 +149,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   const [confirming, setConfirming] = useState(false);
   const [pendingReservation, setPendingReservation] = useState(null);
   const [apiLoading, setApiLoading] = useState(false);
-  const [guestForm, setGuestForm] = useState({ name: '', phone: '' });
 
   // Fetch courts on mount
   useEffect(() => {
@@ -545,86 +629,7 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
     );
   }
 
-  // ── Confirmation modal ─────────────────────────────────────────────────────
-  const ConfirmModal = React.memo(function ConfirmModalComponent() {
-    if (!confirming) return null;
-    const price = courtObj?.price_per_session || DEFAULT_PRICE;
-
-    // Si no está logueado, mostrar formulario de guest
-    if (!user) {
-      return (
-        <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
-          className="modal-backdrop">
-          <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
-            <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
-            <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'var(--blue-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-              <Icon name="user" size={24} color="var(--navy)"/>
-            </div>
-            <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'8px', letterSpacing:'-0.03em' }}>Completa tus datos</h3>
-            <p style={{ fontSize:'13px', color:'var(--text-muted)', textAlign:'center', marginBottom:'20px' }}>Proporciona tu nombre y teléfono para completar la reserva</p>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:'12px', marginBottom:'20px' }}>
-              <div>
-                <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Nombre</label>
-                <input type="text" placeholder="Tu nombre completo" value={guestForm.name}
-                  onChange={e => setGuestForm({...guestForm, name: e.target.value})}
-                  disabled={apiLoading}
-                  style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
-              </div>
-              <div>
-                <label style={{ fontSize:'12px', fontWeight:700, color:'var(--navy)', marginBottom:'4px', display:'block' }}>Teléfono</label>
-                <input type="tel" placeholder="+34 600 000 000" value={guestForm.phone}
-                  onChange={e => setGuestForm({...guestForm, phone: e.target.value})}
-                  disabled={apiLoading}
-                  style={{ width:'100%', padding:'10px 12px', border:'1px solid var(--gray-light)', borderRadius:'8px', fontSize:'14px', fontFamily:'inherit' }}/>
-              </div>
-            </div>
-
-            {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Total',`€${price}`]].map(([k,v])=>(
-              <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
-                <span style={{ fontSize:'13px', color:'var(--text-muted)' }}>{k}</span>
-                <span style={{ fontSize:'13px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
-              </div>
-            ))}
-
-            <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
-              <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)} disabled={apiLoading}>Cancelar</Btn>
-              <Btn variant="primary" size="lg" fullWidth
-                onClick={() => finalizeBooking(guestForm.name, guestForm.phone)}
-                disabled={apiLoading || !guestForm.name || !guestForm.phone}>
-                <Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar'}
-              </Btn>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    // Formulario para usuarios registrados
-    return (
-      <div style={{ position:'fixed', inset:0, background:'oklch(0% 0 0 / 0.5)', zIndex:3000, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0', animation:'fadeIn 0.2s ease' }}
-        className="modal-backdrop">
-        <div style={{ background:'white', borderRadius:'var(--radius-lg) var(--radius-lg) 0 0', padding:'32px 24px 36px', width:'100%', maxWidth:'480px', boxShadow:'var(--shadow-lg)', animation:'slideUp 0.28s ease' }}>
-          <div style={{ width:'4px', height:'4px', borderRadius:'2px' }}/>
-          <div style={{ width:'40px', height:'4px', borderRadius:'2px', background:'var(--gray-mid)', margin:'0 auto 24px' }}/>
-          <div style={{ width:'52px', height:'52px', borderRadius:'50%', background:'var(--green-pale)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-            <Icon name="calendar" size={24} color="var(--green)"/>
-          </div>
-          <h3 style={{ fontFamily:'var(--font-heading)', fontWeight:800, fontSize:'20px', color:'var(--navy)', textAlign:'center', marginBottom:'20px', letterSpacing:'-0.03em' }}>Confirmar reserva</h3>
-          {[['Pista',courtObj?.name],['Fecha',fmtDate(selectedDate)],['Horario',`${fmtSlot(selectedHour)} – ${fmtSlotEnd(selectedHour)}`],['Duración','1h 30min'],['Total',`€${price}`]].map(([k,v])=>(
-            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', borderBottom:'1px solid var(--gray-light)' }}>
-              <span style={{ fontSize:'14px', color:'var(--text-muted)' }}>{k}</span>
-              <span style={{ fontSize:'14px', fontWeight:700, color:'var(--navy)' }}>{v}</span>
-            </div>
-          ))}
-          <div style={{ display:'flex', gap:'10px', marginTop:'24px' }}>
-            <Btn variant="ghost" size="lg" fullWidth onClick={()=>setConfirming(false)} disabled={apiLoading}>Cancelar</Btn>
-            <Btn variant="primary" size="lg" fullWidth onClick={() => finalizeBooking()} disabled={apiLoading}><Icon name="check-circle" size={16}/> {apiLoading ? 'Procesando...' : 'Confirmar y Pagar'}</Btn>
-          </div>
-        </div>
-      </div>
-    );
-  });
+  // ConfirmModal está definido fuera de ReservationsPage — ver más abajo
 
   // ── Payment confirmation modal (step 4) ────────────────────────────────────
   const PaymentConfirmationModal = React.memo(function PaymentConfirmationModalComponent({ step, pendingReservation, apiLoading, courtObj, selectedDate, selectedHour, onConfirm, onCancel }) {
@@ -697,7 +702,16 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
       </div>
 
       <MobileBar/>
-      <ConfirmModal/>
+      <ConfirmModal
+        confirming={confirming}
+        user={user}
+        courtObj={courtObj}
+        selectedDate={selectedDate}
+        selectedHour={selectedHour}
+        apiLoading={apiLoading}
+        onCancel={() => setConfirming(false)}
+        onConfirm={finalizeBooking}
+      />
       <PaymentConfirmationModal
         step={step}
         pendingReservation={pendingReservation}
