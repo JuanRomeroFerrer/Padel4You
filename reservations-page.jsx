@@ -201,8 +201,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   }
 
   async function confirmPayment(reservationId) {
-    if (!user) return;
-
     try {
       setApiLoading(true);
       const response = await apiCall('PUT', `/reservations/${reservationId}/confirm`, {});
@@ -217,10 +215,14 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
         setSD(null);
         setSH(null);
 
-        // Reload user reservations
-        await fetchUserReservations();
-
-        setPage('account');
+        // Reload user reservations only if logged in
+        if (user) {
+          await fetchUserReservations();
+          setPage('account');
+        } else {
+          // Guests go back to home after successful reservation
+          setPage('home');
+        }
       }
     } catch (error) {
       showNotification({ type: 'error', title: 'Error', message: error.message });
@@ -230,8 +232,6 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
   }
 
   async function cancelPendingReservation(reservationId) {
-    if (!user) return;
-
     try {
       setApiLoading(true);
       const response = await apiCall('DELETE', `/reservations/${reservationId}`, null);
@@ -241,8 +241,10 @@ function ReservationsPage({ user, setPage, addReservation, showNotification, api
         setPendingReservation(null);
         setStep(1);
 
-        // Recarga las reservas del usuario
-        await fetchUserReservations();
+        // Reload user reservations only if logged in
+        if (user) {
+          await fetchUserReservations();
+        }
       }
     } catch (error) {
       console.error('Error cancelando reserva:', error);
