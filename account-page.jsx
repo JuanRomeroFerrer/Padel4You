@@ -20,152 +20,149 @@ function fmtTime(timeStr) {
   return timeStr;
 }
 
+// ── Login form — defined at MODULE level to prevent unmount on parent re-render ──
+function LoginForm({ apiLogin, showNotification, setPage, setAuthTab }) {
+  const [email, setEmail] = useState('');
+  const [pass, setPass] = useState('');
+  const [remember, setRemember] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localError, setLocalError] = useState('');
+
+  function validate() {
+    const e = {};
+    if (!email) e.email = 'El email es obligatorio';
+    else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Email no válido';
+    if (!pass) e.pass = 'La contraseña es obligatoria';
+    else if (pass.length < 6) e.pass = 'Mínimo 6 caracteres';
+    return e;
+  }
+
+  async function handleLogin(ev) {
+    ev.preventDefault();
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); return; }
+
+    try {
+      setLocalLoading(true);
+      setLocalError('');
+      setErrors({});
+
+      await apiLogin(email, pass);
+      showNotification({ type: 'success', title: '¡Bienvenido de nuevo!', message: 'Sesión iniciada correctamente 👋' });
+      setPage('account');
+    } catch (error) {
+      setLocalError(error.message || 'Error al iniciar sesión. Verifica tus credenciales.');
+      setErrors({ api: true });
+    } finally {
+      setLocalLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {localError && (
+        <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
+          {localError}
+        </div>
+      )}
+      <InputField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)}
+        placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
+      <InputField label="Contraseña" type="password" value={pass} onChange={e => setPass(e.target.value)}
+        placeholder="••••••••" required icon="shield" error={errors.pass} disabled={localLoading} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text)', opacity: localLoading ? 0.5 : 1, pointerEvents: localLoading ? 'none' : 'auto' }}>
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} disabled={localLoading}
+            style={{ width: '16px', height: '16px', accentColor: 'var(--green)', cursor: 'pointer' }} />
+          Recordarme
+        </label>
+        <button type="button" disabled={localLoading} style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontSize: '13px', fontWeight: 600, padding: 0, opacity: localLoading ? 0.5 : 1 }}>
+          ¿Olvidaste tu contraseña?
+        </button>
+      </div>
+      <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
+        {localLoading ? '⏳ Iniciando sesión…' : (<><Icon name="arrow-right" size={17} /> Iniciar sesión</>)}
+      </Btn>
+      <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
+        ¿No tienes cuenta?{' '}
+        <button type="button" onClick={() => setAuthTab('register')} disabled={localLoading}
+          style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
+          Regístrate gratis
+        </button>
+      </p>
+    </form>
+  );
+}
+
+// ── Register form — defined at MODULE level to prevent unmount on parent re-render ──
+function RegisterForm({ apiRegister, showNotification, setPage, setAuthTab }) {
+  const [form, setForm] = useState({ name: '', email: '', phone: '', pass: '', pass2: '' });
+  const [errors, setErrors] = useState({});
+  const [localLoading, setLocalLoading] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  function validate() {
+    const e = {};
+    if (!form.name.trim()) e.name = 'El nombre es obligatorio';
+    if (!form.email) e.email = 'El email es obligatorio';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email no válido';
+    if (!form.phone) e.phone = 'El teléfono es obligatorio';
+    if (!form.pass || form.pass.length < 8) e.pass = 'Mínimo 8 caracteres';
+    if (form.pass !== form.pass2) e.pass2 = 'Las contraseñas no coinciden';
+    return e;
+  }
+
+  async function handleRegister(ev) {
+    ev.preventDefault();
+    const e = validate();
+    if (Object.keys(e).length) { setErrors(e); return; }
+
+    try {
+      setLocalLoading(true);
+      setLocalError('');
+      setErrors({});
+
+      await apiRegister(form.name, form.email, form.phone, form.pass);
+      showNotification({ type: 'success', title: '¡Cuenta creada!', message: `Bienvenido/a, ${form.name.split(' ')[0]}!` });
+      setPage('account');
+    } catch (error) {
+      setLocalError(error.message || 'Error al crear la cuenta. Por favor intenta nuevamente.');
+      setErrors({ api: true });
+    } finally {
+      setLocalLoading(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      {localError && (
+        <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
+          {localError}
+        </div>
+      )}
+      <InputField label="Nombre completo" value={form.name} onChange={set('name')} placeholder="Tu nombre" required icon="user" error={errors.name} disabled={localLoading} />
+      <InputField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
+      <InputField label="Teléfono" value={form.phone} onChange={set('phone')} placeholder="+34 600 000 000" required icon="phone" error={errors.phone} disabled={localLoading} />
+      <InputField label="Contraseña" type="password" value={form.pass} onChange={set('pass')} placeholder="Mínimo 8 caracteres" required icon="shield" error={errors.pass} disabled={localLoading} />
+      <InputField label="Confirmar contraseña" type="password" value={form.pass2} onChange={set('pass2')} placeholder="Repite la contraseña" required icon="shield" error={errors.pass2} disabled={localLoading} />
+      <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
+        {localLoading ? '⏳ Creando cuenta…' : (<><Icon name="user" size={17} /> Crear cuenta gratuita</>)}
+      </Btn>
+      <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
+        ¿Ya tienes cuenta?{' '}
+        <button type="button" onClick={() => setAuthTab('login')} disabled={localLoading}
+          style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
+          Iniciar sesión
+        </button>
+      </p>
+    </form>
+  );
+}
+
 function AccountPage({ user, setUser, reservations, cancelReservation, setPage, showNotification, apiLogin, apiLogout, apiRegister, loading, setLoading, apiError, setApiError }) {
   const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
   const [profileTab, setProfileTab] = useState('reservas'); // 'reservas' | 'suscripcion' | 'perfil'
-
-  // ── Login form ──
-  function LoginForm() {
-    const [email, setEmail] = useState('');
-    const [pass, setPass] = useState('');
-    const [remember, setRemember] = useState(false);
-    const [errors, setErrors] = useState({});
-    const [localLoading, setLocalLoading] = useState(false);
-    const [localError, setLocalError] = useState('');
-
-    function validate() {
-      const e = {};
-      if (!email) e.email = 'El email es obligatorio';
-      else if (!/\S+@\S+\.\S+/.test(email)) e.email = 'Email no válido';
-      if (!pass) e.pass = 'La contraseña es obligatoria';
-      else if (pass.length < 6) e.pass = 'Mínimo 6 caracteres';
-      return e;
-    }
-
-    async function handleLogin(ev) {
-      ev.preventDefault();
-      const e = validate();
-      if (Object.keys(e).length) { setErrors(e); return; }
-
-      try {
-        setLocalLoading(true);
-        setLocalError('');
-        setErrors({});
-
-        await apiLogin(email, pass);
-        showNotification({ type: 'success', title: '¡Bienvenido de nuevo!', message: 'Sesión iniciada correctamente 👋' });
-        setPage('account');
-      } catch (error) {
-        setLocalError(error.message || 'Error al iniciar sesión. Verifica tus credenciales.');
-        setErrors({ api: true });
-      } finally {
-        setLocalLoading(false);
-      }
-    }
-
-    return (
-      <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {localError && (
-          <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
-            {localError}
-          </div>
-        )}
-        <InputField label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)}
-          placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
-        <InputField label="Contraseña" type="password" value={pass} onChange={e => setPass(e.target.value)}
-          placeholder="••••••••" required icon="shield" error={errors.pass} disabled={localLoading} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text)', opacity: localLoading ? 0.5 : 1, pointerEvents: localLoading ? 'none' : 'auto' }}>
-            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} disabled={localLoading}
-              style={{ width: '16px', height: '16px', accentColor: 'var(--green)', cursor: 'pointer' }} />
-            Recordarme
-          </label>
-          <button type="button" disabled={localLoading} style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontSize: '13px', fontWeight: 600, padding: 0, opacity: localLoading ? 0.5 : 1 }}>
-            ¿Olvidaste tu contraseña?
-          </button>
-        </div>
-        <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
-          {localLoading ? '⏳ Iniciando sesión…' : (<><Icon name="arrow-right" size={17} /> Iniciar sesión</>)}
-        </Btn>
-        <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
-          ¿No tienes cuenta?{' '}
-          <button type="button" onClick={() => setAuthTab('register')} disabled={localLoading}
-            style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
-            Regístrate gratis
-          </button>
-        </p>
-      </form>
-    );
-  }
-
-  // ── Register form ──
-  function RegisterForm() {
-    const [form, setForm] = useState({ name: '', email: '', phone: '', pass: '', pass2: '' });
-    const [errors, setErrors] = useState({});
-    const [localLoading, setLocalLoading] = useState(false);
-    const [localError, setLocalError] = useState('');
-    const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
-
-    function validate() {
-      const e = {};
-      if (!form.name.trim()) e.name = 'El nombre es obligatorio';
-      if (!form.email) e.email = 'El email es obligatorio';
-      else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Email no válido';
-      if (!form.phone) e.phone = 'El teléfono es obligatorio';
-      if (!form.pass || form.pass.length < 8) e.pass = 'Mínimo 8 caracteres';
-      if (form.pass !== form.pass2) e.pass2 = 'Las contraseñas no coinciden';
-      return e;
-    }
-
-    async function handleRegister(ev) {
-      ev.preventDefault();
-      const e = validate();
-      if (Object.keys(e).length) { setErrors(e); return; }
-
-      try {
-        setLocalLoading(true);
-        setLocalError('');
-        setErrors({});
-
-        await apiRegister(form.name, form.email, form.phone, form.pass);
-        showNotification({ type: 'success', title: '¡Cuenta creada!', message: `Bienvenido/a, ${form.name.split(' ')[0]}!` });
-        setPage('account');
-      } catch (error) {
-        setLocalError(error.message || 'Error al crear la cuenta. Por favor intenta nuevamente.');
-        setErrors({ api: true });
-      } finally {
-        setLocalLoading(false);
-      }
-    }
-
-    return (
-      <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {localError && (
-          <div style={{ background: 'var(--red-pale)', borderRadius: '10px', padding: '12px 16px', fontSize: '13px', color: 'var(--red)', borderLeft: '3px solid var(--red)' }}>
-            {localError}
-          </div>
-        )}
-        <InputField label="Nombre completo" value={form.name} onChange={set('name')} placeholder="Tu nombre" required icon="user" error={errors.name} disabled={localLoading} />
-        <InputField label="Email" type="email" value={form.email} onChange={set('email')} placeholder="tu@email.com" required icon="mail" error={errors.email} disabled={localLoading} />
-        <InputField label="Teléfono" value={form.phone} onChange={set('phone')} placeholder="+34 600 000 000" required icon="phone" error={errors.phone} disabled={localLoading} />
-        <InputField label="Contraseña" type="password" value={form.pass} onChange={set('pass')} placeholder="Mínimo 8 caracteres" required icon="shield" error={errors.pass} disabled={localLoading} />
-        <InputField label="Confirmar contraseña" type="password" value={form.pass2} onChange={set('pass2')} placeholder="Repite la contraseña" required icon="shield" error={errors.pass2} disabled={localLoading} />
-        <Btn type="submit" variant="primary" size="lg" fullWidth disabled={localLoading}>
-          {localLoading ? '⏳ Creando cuenta…' : (<><Icon name="user" size={17} /> Crear cuenta gratuita</>)}
-        </Btn>
-        <p style={{ textAlign: 'center', fontSize: '14px', color: 'var(--text-muted)' }}>
-          ¿Ya tienes cuenta?{' '}
-          <button type="button" onClick={() => setAuthTab('login')} disabled={localLoading}
-            style={{ background: 'none', border: 'none', cursor: localLoading ? 'not-allowed' : 'pointer', color: 'var(--green)', fontWeight: 700, fontSize: '14px', padding: 0, opacity: localLoading ? 0.5 : 1 }}>
-            Iniciar sesión
-          </button>
-        </p>
-      </form>
-    );
-  }
-
-  // Render form components directly without memoization
-  // Memoization was causing input focus/state issues when typing
 
   // ── Auth page ──
   function AuthSection() {
@@ -190,7 +187,10 @@ function AccountPage({ user, setUser, reservations, cancelReservation, setPage, 
               ))}
             </div>
             <div style={{ padding: '32px 36px' }}>
-              {authTab === 'login' ? <LoginForm /> : <RegisterForm />}
+              {authTab === 'login'
+                ? <LoginForm apiLogin={apiLogin} showNotification={showNotification} setPage={setPage} setAuthTab={setAuthTab} />
+                : <RegisterForm apiRegister={apiRegister} showNotification={showNotification} setPage={setPage} setAuthTab={setAuthTab} />
+              }
             </div>
           </div>
         </div>
