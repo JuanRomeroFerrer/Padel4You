@@ -77,21 +77,35 @@ function App() {
 
   // Login con API
   async function apiLogin(email, password) {
+    setLoading(true);
+    setApiError(null);
     try {
-      setLoading(true);
-      setApiError(null);
-      const data = await apiCall('POST', '/auth/login', { email, password });
+      // Llamada directa: no usar apiCall porque su handler de 401
+      // muestra "Sesión expirada" que no aplica al intentar hacer login
+      const response = await fetch(`${window.API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Email o contraseña incorrectos');
+      }
 
       if (data && data.user) {
-        const userData = { ...data.user };
-        setUserRaw(userData);
-        localStorage.setItem('p4y_user', JSON.stringify(userData));
-        setLoading(false);
+        setUserRaw(data.user);
+        localStorage.setItem('p4y_user', JSON.stringify(data.user));
         return true;
       }
+
+      throw new Error('Email o contraseña incorrectos');
     } catch (error) {
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -114,22 +128,35 @@ function App() {
 
   // Registro con API
   async function apiRegister(name, email, phone, password) {
+    setLoading(true);
+    setApiError(null);
     try {
-      setLoading(true);
-      setApiError(null);
-      const data = await apiCall('POST', '/auth/register', { name, email, phone, password });
+      const response = await fetch(`${window.API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, email, phone, password })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Error al crear la cuenta');
+      }
 
       if (data && data.user) {
         const today = new Date().toISOString().slice(0, 10);
         const userData = { ...data.user, joinDate: today };
         setUserRaw(userData);
         localStorage.setItem('p4y_user', JSON.stringify(userData));
-        setLoading(false);
         return true;
       }
+
+      throw new Error('Error al crear la cuenta');
     } catch (error) {
-      setLoading(false);
       throw error;
+    } finally {
+      setLoading(false);
     }
   }
 
